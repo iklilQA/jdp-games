@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Juara Digital: Ruby Rhythm</title>
+    
+    <!-- Tailwind CSS (Akan digunakan jika ada internet) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Fallback CSS jika Tailwind disekat oleh HTML Viewer di iOS -->
+    <style>
+        body {
+            font-family: 'Poppins', 'Inter', sans-serif;
+            touch-action: none;
+            overflow: hidden;
+            background: linear-gradient(135deg, #7f1d1d 0%, #1e3a8a 100%);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 450px;
+            height: 100vh;
+            margin: 0 auto;
+            background: rgba(0, 0, 0, 0.65);
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .key-btn {
+            transition: all 0.1s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .key-btn.active {
+            transform: scale(0.9);
+            background: rgba(255, 255, 255, 0.4);
+            box-shadow: 0 0 15px white;
+        }
+
+        .combo-anim {
+            animation: pop 0.2s ease-out;
+        }
+        
+        .bonus-anim {
+            animation: floatUp 1s ease-out forwards;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-50px) scale(1.5); opacity: 0; }
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <div id="game-container">
+        <!-- Kanvas Permainan -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Lapisan UI (Atas dan Bawah) -->
+        <div id="ui-layer" class="p-4 pb-6">
+            
+            <!-- Top Bar: Markah, Pemasa, Tahap, Pause -->
+            <div class="glass-panel rounded-xl p-3 flex justify-between items-center shadow-lg gap-2 pointer-events-auto">
+                <div class="text-center flex-1 border-r border-white/20">
+                    <p class="text-[10px] text-blue-300 font-bold uppercase tracking-wider" style="font-size: 10px; margin: 0;">Markah</p>
+                    <p id="scoreDisplay" class="text-xl font-black text-white" style="margin: 0; font-weight: 900;">0</p>
+                </div>
+                <div class="text-center flex-1 border-r border-white/20">
+                    <p class="text-[10px] text-red-300 font-bold uppercase tracking-wider" style="font-size: 10px; margin: 0;">Masa</p>
+                    <p id="timeDisplay" class="text-xl font-black text-white" style="margin: 0; font-weight: 900;">3:00</p>
+                </div>
+                <div class="text-center flex-1">
+                    <p class="text-[10px] text-purple-300 font-bold uppercase tracking-wider" style="font-size: 10px; margin: 0;">Kelajuan</p>
+                    <p id="levelDisplay" class="text-xl font-black text-white" style="margin: 0; font-weight: 900;">1</p>
+                </div>
+                <button id="pauseBtn" class="flex-none bg-white/10 hover:bg-white/30 p-2 rounded-lg transition border border-white/20 ml-1 pointer-events-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 24px; height: 24px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Combo Display -->
+            <div id="comboDisplayContainer" class="mt-4 text-center hidden relative" style="text-align: center;">
+                <p class="text-lg text-yellow-300 font-black italic shadow-black drop-shadow-md combo-anim" style="margin: 0; font-weight: 900;">COMBO x<span id="comboDisplay">0</span></p>
+                <p id="bonusPopup" class="absolute left-0 right-0 text-2xl text-green-400 font-black hidden drop-shadow-lg" style="font-weight: 900;">+5 BONUS!</p>
+            </div>
+
+            <div class="flex-grow"></div>
+
+            <!-- Penunjuk Kekunci Bawah -->
+            <div class="flex justify-between w-full px-2 opacity-70" style="display: flex; justify-content: space-between; width: 100%;">
+                <div id="key-0" class="key-btn w-12 h-12 rounded-full border-2 border-red-400 flex items-center justify-center font-bold text-xl bg-black/40" style="width: 48px; height: 48px; border-radius: 9999px; border: 2px solid #f87171; display: flex; align-items: center; justify-content: center; font-weight: bold;">A</div>
+                <div id="key-1" class="key-btn w-12 h-12 rounded-full border-2 border-red-400 flex items-center justify-center font-bold text-xl bg-black/40" style="width: 48px; height: 48px; border-radius: 9999px; border: 2px solid #f87171; display: flex; align-items: center; justify-content: center; font-weight: bold;">S</div>
+                <div id="key-2" class="key-btn w-12 h-12 rounded-full border-2 border-blue-400 flex items-center justify-center font-bold text-xl bg-black/40" style="width: 48px; height: 48px; border-radius: 9999px; border: 2px solid #60a5fa; display: flex; align-items: center; justify-content: center; font-weight: bold;">K</div>
+                <div id="key-3" class="key-btn w-12 h-12 rounded-full border-2 border-blue-400 flex items-center justify-center font-bold text-xl bg-black/40" style="width: 48px; height: 48px; border-radius: 9999px; border: 2px solid #60a5fa; display: flex; align-items: center; justify-content: center; font-weight: bold;">L</div>
+            </div>
+
+            <!-- Info Lagu (Bawah Kekunci) -->
+            <div class="mt-4 text-center glass-panel rounded-full py-2 px-3 w-full shadow-md overflow-hidden pointer-events-auto" style="margin-top: 16px; text-align: center; border-radius: 9999px; padding: 8px 12px;">
+                <p id="songDisplay" class="text-sm font-semibold text-gray-200 truncate" style="margin: 0; font-size: 14px;">🎵 Sedia untuk mula...</p>
+            </div>
+        </div>
+
+        <!-- Skrin Jeda (Pause) -->
+        <div id="pauseScreen" class="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-6 z-40 hidden backdrop-blur-sm" style="display: none; position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.75); flex-direction: column; align-items: center; justify-content: center; z-index: 40;">
+            <h2 class="text-4xl font-black text-white mb-8 tracking-widest uppercase" style="font-weight: 900; letter-spacing: 0.1em; margin-bottom: 32px;">PAUSED</h2>
+            <button id="resumeBtn" class="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 text-white font-bold py-3 px-12 rounded-full text-xl shadow-lg transform transition hover:scale-105 pointer-events-auto" style="border-radius: 9999px; font-weight: bold; padding: 12px 48px; font-size: 20px; background: #10b981; border: none; color: white;">
+                Teruskan
+            </button>
+        </div>
+
+        <!-- Skrin Mula -->
+        <div id="startScreen" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-6 z-50 transition-opacity duration-300" style="position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; padding: 24px;">
+            <h1 class="text-4xl font-black text-center mb-2 bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-blue-500 uppercase" style="font-size: 36px; font-weight: 900; color: #ff3b30; text-align: center; margin: 0;">Juara Digital</h1>
+            <h2 class="text-2xl font-bold text-white mb-6" style="font-size: 24px; font-weight: bold; margin-bottom: 24px; margin-top: 4px;">Ruby Rhythm</h2>
+            <div class="glass-panel p-5 rounded-xl mb-8 text-sm text-gray-200 space-y-3 text-center max-w-sm" style="border-radius: 12px; padding: 20px; max-width: 380px; margin-bottom: 32px; font-size: 13px; line-height: 1.6;">
+                <p style="margin: 4px 0;">💻 PC / Laptop: Tekan kekunci [A], [S], [K], [L].</p>
+                <p style="margin: 4px 0;">📱 Telefon / Tablet: Sentuh terus pada lorong yang betul.</p>
+                <p style="margin: 4px 0;">💎 Markah: 1 Jubin = 1 Mata. Setiap 50 Kombo = +5 Mata! Setiap 100 Kombo = +10 Mata!</p>
+                <p class="text-red-300" style="color: #f87171; margin: 4px 0;">⚠️ Penalti: Terlepas atau salah tekan pada jarak jauh akan tolak 5 markah!</p>
+                <p class="text-blue-300 font-semibold" style="color: #93c5fd; font-weight: 600; margin: 4px 0;">🚀 Permainan akan semakin laju (8 Tahap Kelajuan)!</p>
+            </div>
+            <button id="startBtn" class="bg-gradient-to-r from-red-600 to-blue-600 hover:from-red-500 hover:to-blue-500 text-white font-bold py-4 px-12 rounded-full text-xl shadow-[0_0_20px_rgba(59,130,246,0.6)] transform transition hover:scale-105 pointer-events-auto" style="border-radius: 9999px; font-weight: bold; padding: 16px 48px; font-size: 20px; background: linear-gradient(90deg, #dc2626, #2563eb); border: none; color: white;">
+                Mula Bermain
+            </button>
+        </div>
+
+        <!-- Skrin Tamat -->
+        <div id="endScreen" class="absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-6 z-50 hidden" style="display: none; position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; z-index: 50; padding: 24px;">
+            <h1 class="text-4xl font-black text-center mb-2 text-white" style="font-size: 36px; font-weight: 900; margin: 0;">Masa Tamat!</h1>
+            <p class="text-lg text-gray-300 mb-6" style="font-size: 18px; color: #d1d5db; margin-bottom: 24px;">Tahniah Juara Digital!</p>
+            
+            <div class="glass-panel p-6 rounded-2xl mb-8 text-center w-full max-w-xs" style="border-radius: 16px; padding: 24px; max-width: 320px; text-align: center; margin-bottom: 32px;">
+                <p class="text-sm text-gray-400 uppercase tracking-widest mb-1" style="font-size: 12px; color: #9ca3af; letter-spacing: 0.1em; margin: 0;">Markah Akhir</p>
+                <p id="finalScore" class="text-6xl font-black bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-blue-400" style="font-size: 60px; font-weight: 900; color: #60a5fa; margin: 0;">0</p>
+            </div>
+
+            <button id="restartBtn" class="bg-white text-gray-900 font-bold py-3 px-10 rounded-full text-lg shadow-[0_0_15px_white] transform transition hover:scale-105 pointer-events-auto" style="border-radius: 9999px; font-weight: bold; padding: 12px 40px; font-size: 18px; background: white; color: black; border: none;">
+                Main Lagi
+            </button>
+        </div>
+    </div>
+
+    <!-- Pautan Tone.js dari CDN (Jika disekat, ia akan beralih ke native API secara automatik) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('game-container');
+
+        let width, height, laneWidth;
+        function resizeCanvas() {
+            width = container.clientWidth;
+            height = container.clientHeight;
+            canvas.width = width;
+            canvas.height = height;
+            laneWidth = width / 4;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const colors = ['#3b82f6', '#ef4444', '#10b981', '#a855f7']; // Biru, Merah, Hijau, Ungu (25% each)
+        let score = 0, combo = 0, timeLeft = 180, speedLevel = 1;
+        let isPlaying = false, isPaused = false;
+        
+        let tiles = [];
+        let particles = [];
+        let floatingTexts = []; 
+        let lastTime = 0, timeAccumulator = 0, levelAccumulator = 0, spawnTimer = 0;
+
+        const songs = [
+            { name: "Mary Had a Little Lamb", notes: ["E4", "D4", "C4", "D4", "E4", "E4", "E4", "D4", "D4", "D4", "E4", "G4", "G4"] },
+            { name: "Kalau Rasa Gembira", notes: ["C4", "C4", "F4", "F4", "F4", "F4", "F4", "F4", "E4", "F4", "G4"] },
+            { name: "Twinkle Twinkle Little Star", notes: ["C4", "C4", "G4", "G4", "A4", "A4", "G4", "F4", "F4", "E4", "E4", "D4", "D4", "C4"] },
+            { name: "Bapaku Pulang", notes: ["C4", "E4", "G4", "G4", "G4", "A4", "G4", "F4", "E4", "D4", "D4", "D4", "F4", "F4", "F4", "G4", "F4", "E4", "D4", "C4"] },
+            { name: "Rasa Sayang", notes: ["G4", "E4", "G4", "C5", "A4", "G4", "E4", "C4", "D4", "E4", "F4", "A4", "G4"] },
+            { name: "Burung Kakak Tua", notes: ["G4", "G4", "C5", "E5", "D5", "C5", "B4", "A4", "G4"] },
+            { name: "Chan Mali Chan", notes: ["C4", "E4", "G4", "G4", "A4", "G4", "F4", "E4", "D4"] },
+            { name: "Jong Jong Inai", notes: ["C4", "C4", "D4", "E4", "E4", "F4", "E4", "D4", "C4"] },
+            { name: "Gelang Sipaku Gelang", notes: ["G4", "G4", "A4", "G4", "C5", "B4", "A4", "G4"] },
+            { name: "Happy Birthday", notes: ["G4", "G4", "A4", "G4", "C5", "B4", "G4", "G4", "A4", "G4", "D5", "C5", "G4", "G4", "G5", "E5", "C5", "B4", "A4", "F5", "F5", "E5", "C5", "D5", "C5"] },
+            { name: "Tepuk Amai Amai", notes: ["C4", "C4", "G4", "G4", "A4", "A4", "G4", "E4", "C4", "D4", "E4", "F4", "D4", "C4"] }
+        ];
+
+        let currentSong = null;
+        let currentNoteIdx = 0;
+        
+        // --- DEKLARASI SISTEM AUDIO BERGANDA YANG SELAMAT ---
+        let nativeAudioCtx = null;
+        let toneSynth = null;
+
+        function initSynth() {
+            // Hanya aktifkan Tone.js jika perpustakaan berjaya dimuat turun dari CDN
+            if (typeof Tone !== 'undefined') {
+                try {
+                    toneSynth = new Tone.PolySynth(Tone.FMSynth, {
+                        envelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 1.5 }
+                    }).toDestination();
+                    toneSynth.volume.value = -2;
+                    return;
+                } catch (e) {
+                    console.warn("Gagal membina Tone.js Synth, beralih ke Native Audio API.", e);
+                }
+            }
+            
+            // Sediakan Web Audio API asal iPhone sebagai pelan sandaran sekiranya offline/disekat
+            if (!nativeAudioCtx) {
+                try {
+                    nativeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) {
+                    console.error("Web Audio tidak disokong pada peranti ini.", e);
+                }
+            }
+        }
+
+        function playSoundOfNote(noteName) {
+            // Gunakan Tone.js jika berjaya diaktifkan
+            if (toneSynth && typeof Tone !== 'undefined') {
+                try {
+                    toneSynth.triggerAttackRelease(noteName, "8n");
+                    return;
+                } catch(e) {
+                    console.warn("Ralat memainkan Tone.js note, beralih ke Native");
+                }
+            }
+
+            // Pelan Sandaran: Main secara native dengan oscillator dalaman (100% Kalis Sekatan)
+            if (!nativeAudioCtx) {
+                nativeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (nativeAudioCtx.state === 'suspended') {
+                nativeAudioCtx.resume();
+            }
+
+            const noteFreqs = {
+                "C4": 261.63, "D4": 293.66, "E4": 329.63, "F4": 349.23, "G4": 392.00, "A4": 440.00, "B4": 493.88,
+                "C5": 523.25, "D5": 587.33, "E5": 659.25, "F5": 698.46, "G5": 783.99, "A5": 880.00,
+                "G3": 196.00, "A3": 220.00, "B3": 246.94
+            };
+
+            const freq = noteFreqs[noteName] || 440;
+            try {
+                const osc = nativeAudioCtx.createOscillator();
+                const gain = nativeAudioCtx.createGain();
+
+                osc.type = 'triangle'; // Bunyi yang lembut seakan piano elektrik
+                osc.frequency.setValueAtTime(freq, nativeAudioCtx.currentTime);
+
+                gain.gain.setValueAtTime(0.25, nativeAudioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, nativeAudioCtx.currentTime + 0.6);
+
+                osc.connect(gain);
+                gain.connect(nativeAudioCtx.destination);
+
+                osc.start();
+                osc.stop(nativeAudioCtx.currentTime + 0.6);
+            } catch(e) {
+                console.error("Gagal memainkan native oscillator", e);
+            }
+        }
+
+        function pickRandomSong() {
+            currentSong = songs[Math.floor(Math.random() * songs.length)];
+            currentNoteIdx = 0;
+            document.getElementById('songDisplay').innerText = "🎵 " + currentSong.name;
+        }
+
+        function playNextNote() {
+            if (!currentSong) pickRandomSong();
+
+            let note = currentSong.notes[currentNoteIdx];
+            playSoundOfNote(note);
+            currentNoteIdx++;
+
+            if (currentNoteIdx >= currentSong.notes.length) {
+                pickRandomSong(); 
+            }
+        }
+
+        function drawOctagon(ctx, x, y, size, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            const cut = size * 0.25;
+            const outer = [
+                {x: cut, y: 0}, {x: size - cut, y: 0},
+                {x: size, y: cut}, {x: size, y: size - cut},
+                {x: size - cut, y: size}, {x: cut, y: size},
+                {x: 0, y: size - cut}, {x: 0, y: cut}
+            ];
+
+            const innerSize = size * 0.5;
+            const offset = (size - innerSize) / 2;
+            const inCut = innerSize * 0.25;
+            const inner = [
+                {x: offset + inCut, y: offset}, {x: offset + innerSize - inCut, y: offset},
+                {x: offset + innerSize, y: offset + inCut}, {x: offset + innerSize, y: offset + innerSize - inCut},
+                {x: offset + innerSize - inCut, y: offset + innerSize}, {x: offset + inCut, y: offset + innerSize},
+                {x: offset, y: offset + innerSize - inCut}, {x: offset, y: offset + inCut}
+            ];
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(outer[0].x, outer[0].y);
+            for(let i=1; i<8; i++) ctx.lineTo(outer[i].x, outer[i].y);
+            ctx.closePath();
+            ctx.fill();
+
+            const shades = [
+                "rgba(255, 255, 255, 0.6)", 
+                "rgba(255, 255, 255, 0.3)", 
+                "rgba(0, 0, 0, 0.1)",       
+                "rgba(0, 0, 0, 0.4)",       
+                "rgba(0, 0, 0, 0.6)",       
+                "rgba(0, 0, 0, 0.4)",       
+                "rgba(0, 0, 0, 0.1)",       
+                "rgba(255, 255, 255, 0.3)"  
+            ];
+
+            for (let i = 0; i < 8; i++) {
+                let next = (i + 1) % 8;
+                ctx.fillStyle = shades[i];
+                ctx.beginPath();
+                ctx.moveTo(outer[i].x, outer[i].y);
+                ctx.lineTo(outer[next].x, outer[next].y);
+                ctx.lineTo(inner[next].x, inner[next].y);
+                ctx.lineTo(inner[i].x, inner[i].y);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
+            ctx.beginPath();
+            ctx.moveTo(inner[0].x, inner[0].y);
+            for(let i=1; i<8; i++) ctx.lineTo(inner[i].x, inner[i].y);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+            ctx.lineWidth = 1;
+            
+            ctx.beginPath();
+            ctx.moveTo(inner[0].x, inner[0].y);
+            for(let i=1; i<8; i++) ctx.lineTo(inner[i].x, inner[i].y);
+            ctx.closePath();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(outer[0].x, outer[0].y);
+            for(let i=1; i<8; i++) ctx.lineTo(outer[i].x, outer[i].y);
+            ctx.closePath();
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function createParticles(x, y, color) {
+            for(let i=0; i<10; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 300,
+                    vy: (Math.random() - 0.5) * 300,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function createFloatingText(lane, isEscape = false) {
+            let x = lane * laneWidth + laneWidth / 2;
+            let y = isEscape ? (height - 60) : (height - 150);
+            
+            floatingTexts.push({
+                x: x,
+                y: y,
+                text: "-5",
+                life: 1.0,
+                color: "#ff4444"
+            });
+        }
+
+        function triggerMiss(lane, isEscape = false) {
+            combo = 0; 
+            score -= 5;
+            if (score < 1) score = 1; 
+            
+            createFloatingText(lane, isEscape);
+
+            container.classList.add('bg-red-900/50');
+            setTimeout(() => container.classList.remove('bg-red-900/50'), 100);
+            updateUI();
+        }
+
+        function checkComboBonus() {
+            if (combo > 0) {
+                if (combo % 100 === 0) {
+                    score += 10;
+                    let popup = document.getElementById('bonusPopup');
+                    popup.innerText = "+10 BONUS!";
+                    popup.classList.remove('hidden');
+                    setTimeout(() => popup.classList.add('hidden'), 1000);
+                } else if (combo % 50 === 0) {
+                    score += 5; 
+                    let popup = document.getElementById('bonusPopup');
+                    popup.innerText = "+5 BONUS!";
+                    popup.classList.remove('hidden');
+                    setTimeout(() => popup.classList.add('hidden'), 1000);
+                }
+            }
+        }
+
+        function handleInput(lane) {
+            if(!isPlaying || isPaused) return;
+
+            // Aktifkan Audio Context jika iOS menidurkannya
+            if (nativeAudioCtx && nativeAudioCtx.state === 'suspended') {
+                nativeAudioCtx.resume();
+            }
+
+            // Efek visual butang aktif
+            const key = document.getElementById('key-' + lane);
+            if(key) {
+                key.classList.add('active');
+                setTimeout(() => key.classList.remove('active'), 100);
+            }
+
+            let laneTiles = tiles.filter(t => t.lane === lane);
+            const size = laneWidth - 20;
+            const hitZoneY = height - 165;
+            const hitZoneHeight = 75;
+
+            if (laneTiles.length > 0) {
+                let lowestTile = laneTiles.reduce((prev, curr) => prev.y > curr.y ? prev : curr);
+                let tileBottom = lowestTile.y + size;
+                let tileTop = lowestTile.y;
+
+                // 1. Sekiranya permata berada di dalam Zon Sasaran (Hit Zone) -> HIT BERJAYA!
+                if (tileBottom >= hitZoneY && tileTop <= hitZoneY + hitZoneHeight) {
+                    tiles = tiles.filter(t => t !== lowestTile); 
+                    createParticles(lowestTile.lane * laneWidth + laneWidth/2, lowestTile.y + size/2, colors[lowestTile.colorIndex]);
+                    
+                    score += 1;
+                    combo += 1;
+                    checkComboBonus();
+                    playNextNote();
+                    updateUI();
+                    return;
+                } 
+                // 2. Sekiranya permata masih jauh di atas (Too Early) -> Abaikan input, TIADA penalti
+                else if (tileBottom < hitZoneY) {
+                    return; 
+                }
+            }
+            
+            // 3. Sekiranya tiada permata langsung di lorong tersebut -> MISS!
+            triggerMiss(lane, false);
+        }
+
+        function gameLoop(timestamp) {
+            if (!isPlaying || isPaused) {
+                lastTime = timestamp;
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+            
+            let delta = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            timeAccumulator += delta;
+            if (timeAccumulator >= 1) {
+                timeAccumulator -= 1;
+                timeLeft--;
+                if (timeLeft <= 0) {
+                    endGame();
+                    return;
+                }
+            }
+
+            levelAccumulator += delta;
+            if (levelAccumulator >= 22 && speedLevel < 8) {
+                levelAccumulator -= 22;
+                speedLevel++;
+            }
+
+            spawnTimer += delta;
+            let currentSpawnRate = 0.38 / (1 + speedLevel * 0.08); 
+            if (spawnTimer >= currentSpawnRate) {
+                spawnTimer -= currentSpawnRate;
+                tiles.push({
+                    lane: Math.floor(Math.random() * 4),
+                    y: -100,
+                    colorIndex: Math.floor(Math.random() * 4) 
+                });
+            }
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Melukis Garis Pemisah Lorong
+            ctx.strokeStyle = "rgba(255,255,255,0.1)";
+            ctx.lineWidth = 1;
+            for(let i=1; i<4; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * laneWidth, 0);
+                ctx.lineTo(i * laneWidth, height);
+                ctx.stroke();
+            }
+
+            // Melukis Zon Sasaran (Hit Zone) bercahaya di bahagian bawah
+            const hitZoneY = height - 165;
+            const hitZoneHeight = 75;
+
+            ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+            ctx.fillRect(0, hitZoneY, width, hitZoneHeight);
+
+            // Sempadan atas Hit Zone dengan kecerunan merah & biru Juara Digital
+            let gradTop = ctx.createLinearGradient(0, 0, width, 0);
+            gradTop.addColorStop(0, "rgba(239, 68, 68, 0.8)");
+            gradTop.addColorStop(1, "rgba(59, 130, 246, 0.8)");
+            ctx.strokeStyle = gradTop;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, hitZoneY);
+            ctx.lineTo(width, hitZoneY);
+            ctx.stroke();
+
+            // Sempadan bawah Hit Zone
+            ctx.beginPath();
+            ctx.moveTo(0, hitZoneY + hitZoneHeight);
+            ctx.lineTo(width, hitZoneY + hitZoneHeight);
+            ctx.stroke();
+
+            // Menggerakkan dan Melukis Permata
+            let currentSpeed = 350 * (1 + speedLevel * 0.15);
+            for (let i = tiles.length - 1; i >= 0; i--) {
+                let t = tiles[i];
+                t.y += currentSpeed * delta;
+                
+                // Jika permata terkeluar melepasi sempadan bawah Zon Sasaran -> Terlepas!
+                if (t.y > hitZoneY + hitZoneHeight) {
+                    tiles.splice(i, 1);
+                    triggerMiss(t.lane, true);
+                } else {
+                    let size = laneWidth - 20;
+                    drawOctagon(ctx, (t.lane * laneWidth) + 10, t.y, size, colors[t.colorIndex]);
+                }
+            }
+
+            // Mengemaskini dan melukis Zarah (Particles)
+            for(let i=particles.length-1; i>=0; i--) {
+                let p = particles[i];
+                p.x += p.vx * delta;
+                p.y += p.vy * delta;
+                p.life -= delta * 3;
+                if(p.life <= 0) {
+                    particles.splice(i, 1);
+                } else {
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+
+            // Mengemaskini dan melukis Teks Terapung (Floating -5)
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                let ft = floatingTexts[i];
+                ft.y -= 75 * delta; 
+                ft.life -= delta * 1.5; 
+                if (ft.life <= 0) {
+                    floatingTexts.splice(i, 1);
+                } else {
+                    ctx.save();
+                    ctx.globalAlpha = ft.life;
+                    ctx.fillStyle = ft.color;
+                    ctx.font = "bold 24px Poppins, sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.shadowColor = "black";
+                    ctx.shadowBlur = 8;
+                    ctx.fillText(ft.text, ft.x, ft.y);
+                    ctx.restore();
+                }
+            }
+
+            updateUI();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateUI() {
+            document.getElementById('scoreDisplay').innerText = score;
+            document.getElementById('levelDisplay').innerText = speedLevel;
+            
+            let m = Math.floor(timeLeft / 60);
+            let s = timeLeft % 60;
+            document.getElementById('timeDisplay').innerText = m + ":" + (s < 10 ? "0" : "") + s;
+
+            let comboContainer = document.getElementById('comboDisplayContainer');
+            if(combo > 0) {
+                comboContainer.classList.remove('hidden');
+                let comboText = document.getElementById('comboDisplay');
+                if (comboText.innerText != combo) {
+                    comboText.innerText = combo;
+                    comboText.parentElement.classList.remove('combo-anim');
+                    void comboText.parentElement.offsetWidth; 
+                    comboText.parentElement.classList.add('combo-anim');
+                }
+            } else {
+                comboContainer.classList.add('hidden');
+            }
+        }
+
+        function togglePause() {
+            if (!isPlaying) return;
+            isPaused = !isPaused;
+            if (isPaused) {
+                document.getElementById('pauseScreen').style.display = 'flex';
+                if (typeof Tone !== 'undefined' && Tone.getTransport) {
+                    Tone.getTransport().pause();
+                }
+            } else {
+                document.getElementById('pauseScreen').style.display = 'none';
+                lastTime = performance.now(); 
+            }
+        }
+
+        function endGame() {
+            isPlaying = false;
+            document.getElementById('endScreen').style.display = 'flex';
+            document.getElementById('finalScore').innerText = score;
+        }
+
+        async function startGame() {
+            // Aktifkan Tone.js sekiranya berjaya diimport
+            if (typeof Tone !== 'undefined') {
+                try {
+                    await Tone.start();
+                } catch(e) {
+                    console.log("Tone.start() skipped");
+                }
+            }
+
+            // Bina/aktifkan sintesis audio sandaran (native fallback)
+            initSynth();
+            if (nativeAudioCtx && nativeAudioCtx.state === 'suspended') {
+                try {
+                    nativeAudioCtx.resume();
+                } catch(e) {}
+            }
+
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('endScreen').style.display = 'none';
+            
+            score = 0; combo = 0; timeLeft = 180; speedLevel = 1;
+            timeAccumulator = 0; levelAccumulator = 0; spawnTimer = 0;
+            tiles = []; particles = []; floatingTexts = [];
+            isPlaying = true;
+            isPaused = false;
+            
+            pickRandomSong();
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+        document.getElementById('pauseBtn').addEventListener('click', togglePause);
+        document.getElementById('resumeBtn').addEventListener('click', togglePause);
+
+        // Khas untuk iOS: Kejutkan Audio Context pada sentuhan pertama
+        const unlockAudio = () => {
+            if (!nativeAudioCtx) {
+                nativeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (nativeAudioCtx && nativeAudioCtx.state === 'suspended') {
+                nativeAudioCtx.resume();
+            }
+            document.removeEventListener('touchstart', unlockAudio);
+            document.removeEventListener('pointerdown', unlockAudio);
+        };
+        document.addEventListener('touchstart', unlockAudio, { passive: true });
+        document.addEventListener('pointerdown', unlockAudio, { passive: true });
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if(key === 'a') handleInput(0);
+            if(key === 's') handleInput(1);
+            if(key === 'k') handleInput(2);
+            if(key === 'l') handleInput(3);
+        });
+
+        // Menyokong pointerdown (iOS 13+) dan sentuhan touchstart (Fallback ganda)
+        const getLaneFromX = (clientX) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const x = (clientX - rect.left) * scaleX;
+            return Math.floor(x / laneWidth);
+        };
+
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            const lane = getLaneFromX(e.clientX);
+            if(lane >= 0 && lane <= 3) {
+                handleInput(lane);
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if(e.changedTouches && e.changedTouches[0]) {
+                const lane = getLaneFromX(e.changedTouches[0].clientX);
+                if(lane >= 0 && lane <= 3) {
+                    handleInput(lane);
+                }
+            }
+        }, { passive: false });
+
+        document.body.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+        
+        // Sediakan pembacaan awal canvas
+        resizeCanvas();
+    </script>
+</body>
+</html>
